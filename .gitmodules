@@ -1,0 +1,3 @@
+[submodule "idf-extra-components"]
+	path = idf-extra-components
+	url = https://github.com/espressif/idf-extra-components

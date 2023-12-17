@@ -1,12 +1,18 @@
 #ifndef STARGATE_MAIN_H
 #define STARGATE_MAIN_H
 
+#include <Arduino.h>
+#include "ArduinoClass.h"
+#include "USB.h"
 
-class Main {
+class Main: public ArduinoClass {
 public:
-    void setup();
+    void setup() override;
 
-    void loop();
+    void loop() override;
+
+private:
+    USB _usb;
 };
 
 
