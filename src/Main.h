@@ -2,6 +2,7 @@
 #define STARGATE_MAIN_H
 
 #include <Arduino.h>
+#include <set>
 #include "ArduinoClass.h"
 #include "USB.h"
 
@@ -12,7 +13,12 @@ public:
     void loop() override;
 
 private:
+    void onKeyDown(uint8_t id);
+
+private:
     USB _usb;
+    std::vector<uint8_t> _chevronsPressed;
+    static const std::set<std::vector<uint8_t>> _validAddresses;
 };
 
 
