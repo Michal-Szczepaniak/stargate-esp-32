@@ -1,5 +1,4 @@
 #include "Main.h"
-#include "FFat.h"
 
 const std::set<std::vector<uint8_t>> Main::_validAddresses = {
         { 17, 31, 15, 35, 25, 13, 34 }, // ABYDOS
@@ -37,14 +36,19 @@ const std::set<std::vector<uint8_t>> Main::_validAddresses = {
 };
 
 void Main::setup() {
-    Serial.begin(19200);
+    Serial.begin(115200);
 
     if(!FFat.begin(false, "", 1 )){
         Serial.println("FFat Mount Failed");
         return;
     }
-    
+
+    FFat.open("/");
     Serial.println("File system mounted");
+
+    _audio.setPinout(GPIO_NUM_16, GPIO_NUM_15, GPIO_NUM_17);
+    _audio.setVolume(10);
+    _audio.forceMono(true);
 
     _usb.registerKeyDownCallback([this](uint8_t id){ onKeyDown(id); });
     _usb.setup();
@@ -52,16 +56,24 @@ void Main::setup() {
 
 void Main::loop() {
     _usb.loop();
+    _audio.loop();
 }
 
 void Main::onKeyDown(uint8_t id) {
-    Serial.println(id);
      if(std::find(_chevronsPressed.begin(), _chevronsPressed.end(), id) == _chevronsPressed.end()) {
          _chevronsPressed.emplace_back(id);
      }
 
     if (_chevronsPressed.size() < 8) {
+        if (id == 0) {
+            _usb.clearPixels();
+            _chevronsPressed.clear();
+            play("cancel.wav");
+            return;
+        }
+
         _usb.setPixel(id, true);
+        play("/DHD/dhd_usual_" + std::to_string(random(7)+1) + ".wav");
         return;
     }
 
@@ -69,5 +81,12 @@ void Main::onKeyDown(uint8_t id) {
         Serial.println("Whoops invalid address, better luck next time… but continuing anyway");
         _usb.clearPixels();
         _chevronsPressed.clear();
+        play("dial_fail_sg1.wav");
     }
+}
+
+void Main::play(std::string filePath) {
+    _audio.stopSong();
+    delay(100);
+    _audio.connecttoFS(FFat, filePath.c_str());
 }

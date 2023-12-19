@@ -5,6 +5,9 @@
 #include <set>
 #include "ArduinoClass.h"
 #include "USB.h"
+#include "FFat.h"
+#include <Audio.h>
+#include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v//ESP32-audioI2S/src/Audio.h"
 
 class Main: public ArduinoClass {
 public:
@@ -14,11 +17,13 @@ public:
 
 private:
     void onKeyDown(uint8_t id);
+    void play(std::string filePath);
 
 private:
     USB _usb;
     std::vector<uint8_t> _chevronsPressed;
     static const std::set<std::vector<uint8_t>> _validAddresses;
+    Audio _audio;
 };
 
 
