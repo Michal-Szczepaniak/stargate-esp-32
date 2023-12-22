@@ -38,6 +38,20 @@ const std::set<std::vector<uint8_t>> Main::_validAddresses = {
 void Main::setup() {
     Serial.begin(115200);
 
+    FastLED.addLeds<NEOPIXEL, GPIO_NUM_4>(_leds, 144);
+    FastLED.clear(true);
+    for (auto & _led : _leds) {
+        _led = CRGB(0, 10, 255);
+    }
+    FastLED.show();
+    delay(2000);
+    for (auto & _led : _leds) {
+        _led = CRGB(0, 00, 200);
+    }
+    FastLED.show();
+    delay(2000);
+    FastLED.clear(true);
+
     if(!FFat.begin(false, "", 1 )){
         Serial.println("FFat Mount Failed");
         return;

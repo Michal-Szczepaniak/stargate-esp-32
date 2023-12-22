@@ -7,7 +7,9 @@
 #include "USB.h"
 #include "FFat.h"
 #include <Audio.h>
-#include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v//ESP32-audioI2S/src/Audio.h"
+#include <FastLED.h>
+#include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v/ESP32-audioI2S/src/Audio.h"
+#include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v/FastLED/src/FastLED.h"
 
 class Main: public ArduinoClass {
 public:
@@ -24,6 +26,7 @@ private:
     std::vector<uint8_t> _chevronsPressed;
     static const std::set<std::vector<uint8_t>> _validAddresses;
     Audio _audio;
+    CRGB _leds[144];
 };
 
 
