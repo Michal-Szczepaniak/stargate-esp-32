@@ -8,11 +8,20 @@
 #include "FFat.h"
 #include <Audio.h>
 #include <FastLED.h>
+#include <AccelStepper.h>
+
+#define NOT_SEQUENTIAL_PINOUT
+#include "PCF8575.h"
+
 #include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v/ESP32-audioI2S/src/Audio.h"
 #include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v/FastLED/src/FastLED.h"
+#include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v/AccelStepper/src/AccelStepper.h"
+#include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v/PCF8575 library/PCF8575.h"
 
 class Main: public ArduinoClass {
 public:
+    Main();
+
     void setup() override;
 
     void loop() override;
@@ -27,6 +36,10 @@ private:
     static const std::set<std::vector<uint8_t>> _validAddresses;
     Audio _audio;
     CRGB _leds[144];
+    AccelStepper _stepper;
+    PCF8575 _ioExpander;
+    std::vector<std::pair<int, int>> _chevronLEDs;
+    std::vector<std::pair<int, int>> _chevronMots;
 };
 
 
