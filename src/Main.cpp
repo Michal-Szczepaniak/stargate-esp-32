@@ -35,7 +35,7 @@ const std::set<std::vector<uint8_t>> Main::_validAddresses = {
         {37, 5,  17, 15, 22, 19, 34}, // FINAL DESTINATION
 };
 
-Main::Main() : _leds(), _stepper(AccelStepper::DRIVER, GPIO_NUM_1, GPIO_NUM_2),
+Main::Main() : _leds(), _stepper(200, GPIO_NUM_1, GPIO_NUM_2),
                _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18),
                _chevronLEDs({{GPIO_NUM_5,  LOW},
                              {GPIO_NUM_6,  LOW},
@@ -81,8 +81,10 @@ void Main::setup() {
     _audio.setVolume(15);
     _audio.forceMono(true);
 
-    _stepper.setAcceleration(200.f);
-    _stepper.setMaxSpeed(200.f);
+    _stepper.begin(15, 32);
+    _stepper.enable();
+    _stepper.setSpeedProfile(DRV8834::LINEAR_SPEED, 200, 200);
+    _stepper.startRotate(360);
 
     for (std::pair<int, int> led: _chevronLEDs) {
         pinMode(led.first, OUTPUT);
@@ -102,10 +104,12 @@ void Main::setup() {
 void Main::loop() {
     _usb.loop();
     _audio.loop();
-    _stepper.run();
 
-    for (std::pair<int, int> led: _chevronLEDs) {
-        digitalWrite(led.first, HIGH);
+    unsigned waitTimeMicros = _stepper.nextAction();
+    if (waitTimeMicros <= 0) {
+        // stop
+    } else {
+        // we still goin
     }
 }
 
@@ -115,9 +119,9 @@ void Main::onKeyDown(uint8_t id) {
     }
 
     if (id > 0) {
-        _stepper.move(1000.f);
+        _stepper.startRotate(90);
     } else {
-        _stepper.move(-1000.f);
+        _stepper.startRotate(-90);
     }
 
     if (_chevronsPressed.size() < 8) {
