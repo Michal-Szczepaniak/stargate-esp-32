@@ -10,7 +10,8 @@
 #include <FastLED.h>
 #include <DRV8834.h>
 
-#define NOT_SEQUENTIAL_PINOUT
+#define NOT_SEQUENTIAL_PINOUT 1
+#define PCF8575_DEBUG 1
 #include "PCF8575.h"
 
 #include "../.pio/libdeps/esp32-s3-devkitc-1-n16r8v/ESP32-audioI2S/src/Audio.h"

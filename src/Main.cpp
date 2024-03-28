@@ -48,23 +48,34 @@ Main::Main() : _leds(), _stepper(200, GPIO_NUM_1, GPIO_NUM_2),
                              {P03,  P04},
                              {P05,  P06},
                              {P07,  P10},
-                             {P11, P12}}) {
+                             {P11, P12},
+                             {P13, P14},
+                             {P15, P00}}) {
 
 }
 
 void Main::setup() {
     Serial.begin(115200);
+    Serial.println("start");
+
+    _ioExpander.begin();
+    for (std::pair<int, int> led: _chevronMots) {
+        _ioExpander.pinMode(led.first, OUTPUT);
+        _ioExpander.pinMode(led.second, OUTPUT);
+        _ioExpander.digitalWrite(led.first, LOW);
+        _ioExpander.digitalWrite(led.second, HIGH);
+    }
+
 
     FastLED.addLeds<NEOPIXEL, GPIO_NUM_4>(_leds, 144);
     FastLED.clear(true);
     for (auto &_led: _leds) {
         _led = CRGB(0, 10, 255);
     }
+    FastLED.setBrightness(50);
     FastLED.show();
     delay(2000);
-    for (auto &_led: _leds) {
-        _led = CRGB(0, 00, 200);
-    }
+    FastLED.setBrightness(20);
     FastLED.show();
     delay(2000);
     FastLED.clear(true);
@@ -88,13 +99,6 @@ void Main::setup() {
 
     for (std::pair<int, int> led: _chevronLEDs) {
         pinMode(led.first, OUTPUT);
-    }
-
-    for (std::pair<int, int> led: _chevronMots) {
-        _ioExpander.pinMode(led.first, OUTPUT);
-        _ioExpander.pinMode(led.second, OUTPUT);
-        _ioExpander.digitalWrite(led.first, HIGH);
-        _ioExpander.digitalWrite(led.second, LOW);
     }
 
     _usb.registerKeyDownCallback([this](uint8_t id) { onKeyDown(id); });

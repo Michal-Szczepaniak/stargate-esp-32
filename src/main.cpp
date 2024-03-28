@@ -1,4 +1,5 @@
 #include "Main.h"
+#include "Arduino.h"
 
 Main mainObj;
 
