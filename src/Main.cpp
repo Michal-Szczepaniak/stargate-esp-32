@@ -88,9 +88,15 @@ void Main::setup() {
     FFat.open("/");
     Serial.println("File system mounted");
 
-    _audio.setPinout(GPIO_NUM_16, GPIO_NUM_15, GPIO_NUM_17);
-    _audio.setVolume(15);
-    _audio.forceMono(true);
+    xTaskCreatePinnedToCore(
+            Main::audioTaskHelper,             /* Function to implement the task */
+            "audioplay",           /* Name of the task */
+            5000,                  /* Stack size in words */
+            this,                  /* Task input parameter */
+            2 | portPRIVILEGE_BIT, /* Priority of the task */
+            nullptr,                  /* Task handle. */
+            1                      /* Core where the task should run */
+    );
 
     _stepper.begin(15, 32);
     _stepper.enable();
@@ -150,7 +156,30 @@ void Main::onKeyDown(uint8_t id) {
 }
 
 void Main::play(std::string filePath) {
-    _audio.stopSong();
-    delay(100);
-    _audio.connecttoFS(FFat, filePath.c_str());
+//    _audio.stopSong();
+//    delay(100);
+//    _audio.connecttoFS(FFat, filePath.c_str());
+    xQueueSend(_audioQueue, filePath.c_str(), portMAX_DELAY);
+}
+
+void Main::audioTask() {
+    _audioQueue = xQueueCreate(10, sizeof(const char*));
+
+    _audio.setPinout(GPIO_NUM_16, GPIO_NUM_15, GPIO_NUM_17);
+    _audio.setVolume(15);
+    _audio.forceMono(true);
+
+    const char *filename;
+
+    while (true) {
+        if(xQueueReceive(_audioQueue, &filename, 1) == pdPASS) {
+            _audio.connecttoFS(FFat, filename);
+        }
+
+        _audio.loop();
+
+        if (!_audio.isRunning()) {
+            sleep(1);
+        }
+    }
 }

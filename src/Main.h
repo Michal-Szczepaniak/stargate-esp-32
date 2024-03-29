@@ -26,9 +26,14 @@ public:
 
     void loop() override;
 
+    static void audioTaskHelper(void *data) {
+        ((Main*)data)->audioTask();
+    }
+
 private:
     void onKeyDown(uint8_t id);
     void play(std::string filePath);
+    void audioTask();
 
 private:
     USB _usb;
@@ -40,6 +45,7 @@ private:
     PCF8575 _ioExpander;
     std::vector<std::pair<int, int>> _chevronLEDs;
     std::vector<std::pair<int, int>> _chevronMots;
+    QueueHandle_t _audioQueue;
 };
 
 
