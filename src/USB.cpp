@@ -340,7 +340,6 @@ void USB::keyEventCallback(USB::key_event_t *key_event) {
         if (hidKeyboardGetChar(key_event->modifier, key_event->key_code, &keyChar)) {
             try {
                 if (_keyDownCallback != nullptr) {
-                    Serial0.printf("Key char: %c, id: %d\n", keyChar, _keycode2LEDIndex.at(keyChar));
                     _keyDownCallback(_keycode2LEDIndex.at(keyChar));
                 }
             } catch (std::out_of_range &e) {
