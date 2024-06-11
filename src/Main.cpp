@@ -35,79 +35,116 @@ const std::set<std::vector<uint8_t>> Main::_validAddresses = {
         {37, 5,  17, 15, 22, 19, 34}, // FINAL DESTINATION
 };
 
-Main::Main() : _leds(), _stepper(200, GPIO_NUM_1, GPIO_NUM_2),
-               _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18),
-               _chevronLEDs({{GPIO_NUM_5,  LOW},
-                             {GPIO_NUM_6,  LOW},
-                             {GPIO_NUM_7,  LOW},
-                             {GPIO_NUM_8,  LOW},
-                             {GPIO_NUM_9,  LOW},
-                             {GPIO_NUM_10, LOW},
-                             {GPIO_NUM_14, LOW}}),
-               _chevronMots({{P01,  P02},
-                             {P03,  P04},
-                             {P05,  P06},
-                             {P07,  P10},
-                             {P11, P12},
-                             {P13, P14},
-                             {P15, P00}}) {
+const std::map<int, int> Main::_dhdButtonMapping = {
+        { 0,  0 },
+        { 25, 1 },
+        { 2,  2 },
+        { 17, 3 },
+        { 14, 4 },
+        { 18, 5 },
+        { 23, 6 },
+        { 26, 7 },
+        { 39, 8 },
+        { 33, 9 },
+        { 10, 10 },
+        { 28, 11 },
+        { 16, 12 },
+        { 30, 13 },
+        { 35, 14 },
+        { 15, 15 },
+        { 31, 16 },
+        { 27, 17 },
+        { 8,  18 },
+        { 36, 19 },
+        { 4,  20 },
+        { 3,  21 },
+        { 21, 22 },
+        { 11, 23 },
+        { 37, 24 },
+        { 12, 25 },
+        { 34, 26 },
+        { 38, 27 },
+        { 29, 28 },
+        { 6,  29 },
+        { 24, 30 },
+        { 7,  31 },
+        { 22, 32 },
+        { 19, 33 },
+        { 1,  34 },
+        { 32, 35 },
+        { 5,  36 },
+        { 9,  37 },
+        { 20, 38 },
+};
 
+const std::vector<uint16_t> Main::_chevronOffsets = {
+        0,
+        STEPS_PER_CHEVRON * 1,
+        STEPS_PER_CHEVRON * 2,
+        STEPS_PER_CHEVRON * 3,
+        STEPS_PER_CHEVRON * 6,
+        STEPS_PER_CHEVRON * 7,
+        STEPS_PER_CHEVRON * 8,
+        0,
+};
+
+Main::Main() : _chevronsPressed({}), _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18),
+               _chevronLEDs({{GPIO_NUM_9,  LOW},
+                             {GPIO_NUM_10, LOW},
+                             {GPIO_NUM_14, LOW},
+                             {GPIO_NUM_5,  LOW},
+                             {GPIO_NUM_7,  LOW},
+                             {GPIO_NUM_6,  LOW},
+                             {GPIO_NUM_8,  LOW}}),
+               _chevronMots({{P13, P10},
+                             {P14, P15},
+                             {P06,  P07},
+                             {P02,  P03},
+                             {P04,  P05},
+                             {P00,  P01},
+                             {P11, P12}}) {
 }
 
 void Main::setup() {
-    Serial.begin(115200);
-    Serial.println("start");
+    Serial0.begin(115200);
+    Serial0.println("start");
 
     _ioExpander.begin();
     for (std::pair<int, int> led: _chevronMots) {
         _ioExpander.pinMode(led.first, OUTPUT);
         _ioExpander.pinMode(led.second, OUTPUT);
-        _ioExpander.digitalWrite(led.first, LOW);
+        _ioExpander.digitalWrite(led.first, HIGH);
         _ioExpander.digitalWrite(led.second, HIGH);
     }
 
 
     FastLED.addLeds<NEOPIXEL, GPIO_NUM_4>(_leds, 144);
     FastLED.clear(true);
-    for (auto &_led: _leds) {
-        _led = CRGB(0, 10, 255);
-    }
-    FastLED.setBrightness(50);
-    FastLED.show();
-    delay(2000);
-    FastLED.setBrightness(20);
-    FastLED.show();
-    delay(2000);
-    FastLED.clear(true);
 
     if (!FFat.begin(false, "", 1)) {
-        Serial.println("FFat Mount Failed");
+        Serial0.println("FFat Mount Failed");
         return;
     }
 
     FFat.open("/");
-    Serial.println("File system mounted");
+    Serial0.println("File system mounted");
 
-    xTaskCreatePinnedToCore(
-            Main::audioTaskHelper,             /* Function to implement the task */
-            "audioplay",           /* Name of the task */
-            5000,                  /* Stack size in words */
-            this,                  /* Task input parameter */
-            2 | portPRIVILEGE_BIT, /* Priority of the task */
-            nullptr,                  /* Task handle. */
-            1                      /* Core where the task should run */
-    );
+    _audio.setPinout(GPIO_NUM_16, GPIO_NUM_15, GPIO_NUM_17);
+    _audio.setVolume(15);
+    _audio.forceMono(true);
 
-    _stepper.begin(15, 32);
-    _stepper.enable();
-    _stepper.setSpeedProfile(DRV8834::LINEAR_SPEED, 200, 200);
-    _stepper.startRotate(360);
+    _stepperEngine.init();
+    _stepper = _stepperEngine.stepperConnectToPin(GPIO_NUM_1);
+    _stepper->setDirectionPin(GPIO_NUM_2);
+    _stepper->setAutoEnable(true);
+    _stepper->setSpeedInHz(200*16);
+    _stepper->setAcceleration(200*16);
 
     for (std::pair<int, int> led: _chevronLEDs) {
         pinMode(led.first, OUTPUT);
     }
 
-    _usb.registerKeyDownCallback([this](uint8_t id) { onKeyDown(id); });
+    _usb.registerKeyDownCallback([&](uint8_t id) { onKeyDown(id); });
     _usb.setup();
 }
 
@@ -115,71 +152,231 @@ void Main::loop() {
     _usb.loop();
     _audio.loop();
 
-    unsigned waitTimeMicros = _stepper.nextAction();
-    if (waitTimeMicros <= 0) {
-        // stop
-    } else {
-        // we still goin
+    if (_goHomeTimeout != 0 && (millis() - _goHomeTimeout > (1 * 1000))) {
+        _goHomeTimeout = 0;
+        _stepper->move(calculateMove(getCurrentPosition(), 0));
+        _currentPosition = 0;
+        _currentOffset = 0;
+    }
+
+    if (_wormholeEstablished && !_audio.isRunning()) {
+        play("/wormhole-loop.wav");
+    }
+
+    if (_wormholeEstablished && millis() - _wormholeAnimationTimestamp > 100) {
+        _wormholeAnimationTimestamp = millis();
+
+        for (int i = 0; i < 144; i++) {
+            if (i % 5 == _wormholeAnimationAlt) {
+                _leds[i] = CRGB(5, 37, 247);
+            } else {
+                _leds[i] = CRGB(0, 10, 200);
+            }
+        }
+
+        _wormholeAnimationAlt = (_wormholeAnimationAlt + 1) % 5;
+        FastLED.show();
+    }
+
+    if (!_stepper->isRunning() && _chevronSelectionInProgress) {
+        int currentChevron = getCurrentChevron();
+        doChevronAnimation(currentChevron);
+
+        _chevronSelectionInProgress = false;
+
+        if (!_chevronsQueue.empty()) {
+            uint8_t nextChevron = _chevronsQueue.front();
+            _chevronsQueue.erase(_chevronsQueue.begin());
+            _stepper->move(
+                    calculateMove(
+                            getCurrentPosition(),
+                            ((nextChevron-1) * -1 * STEPS_PER_SYMBOL) + _chevronOffsets[currentChevron + 2]
+                            ));
+            _currentPosition = nextChevron-1;
+            _chevronSelectionInProgress = true;
+            _currentOffset = currentChevron + 2;
+        }
     }
 }
 
 void Main::onKeyDown(uint8_t id) {
-    if (std::find(_chevronsPressed.begin(), _chevronsPressed.end(), id) == _chevronsPressed.end()) {
-        _chevronsPressed.emplace_back(id);
+    if (_wormholeEstablished) {
+        if (id > 0) return;
+
+        _wormholeEstablished = false;
+        play("/eh_usual_close.wav");
+
+        unsigned long timestamp = millis();
+        while (millis() - timestamp < 3000) {
+            _audio.loop();
+        }
+
+        cancelDial();
+        FastLED.clear(true);
+        _wormholeAnimationTimestamp = 0;
+        return;
     }
 
-    if (id > 0) {
-        _stepper.startRotate(90);
+    if (std::find(_chevronsPressed.begin(), _chevronsPressed.end(), id) == _chevronsPressed.end()) {
+        _chevronsPressed.emplace_back(id);
     } else {
-        _stepper.startRotate(-90);
+        cancelDial();
+        play("/cancel.wav");
     }
 
     if (_chevronsPressed.size() < 8) {
         if (id == 0) {
-            _usb.clearPixels();
-            _chevronsPressed.clear();
-            play("cancel.wav");
+            cancelDial();
+            play("/cancel.wav");
             return;
         }
 
-        _usb.setPixel(id, true);
+        _usb.setPixel(_dhdButtonMapping.at(id), true);
         play("/DHD/dhd_usual_" + std::to_string(random(7) + 1) + ".wav");
+
+        if (!_stepper->isRunning()) {
+            int currentChevron = getCurrentChevron();
+            _stepper->move(calculateMove(
+                    getCurrentPosition(),
+                    ((id-1) * -1 * STEPS_PER_SYMBOL) + _chevronOffsets[currentChevron+1]
+                    ));
+            _currentPosition = id-1;
+            _chevronSelectionInProgress = true;
+            _currentOffset = currentChevron+1;
+        } else {
+            _chevronsQueue.emplace_back(id);
+        }
+
         return;
     }
 
-    if (false == _validAddresses.count(_chevronsPressed)) {
-        Serial.println("Whoops invalid address, better luck next time… but continuing anyway");
-        _usb.clearPixels();
-        _chevronsPressed.clear();
-        play("dial_fail_sg1.wav");
+    if (false == _validAddresses.count(_chevronsPressed) && false) {
+        Serial0.println("Whoops invalid address, better luck next time…");
+
+        cancelDial();
+        play("/dial_fail_sg1.wav");
+    } else {
+        _usb.setPixel(0, true);
+
+        play("/eh_usual_open.wav");
+
+        unsigned long timestamp = millis();
+        while (millis() - timestamp < 1500) {
+            _audio.loop();
+        }
+
+        for (auto &_led: _leds) {
+            _led = CRGB(0, 10, 255);
+        }
+        FastLED.setBrightness(50);
+        FastLED.show();
+
+        timestamp = millis();
+        while (millis() - timestamp < 2000) {
+            _audio.loop();
+        }
+
+        FastLED.setBrightness(20);
+        FastLED.show();
+
+        timestamp = millis();
+        while (millis() - timestamp < 2500) {
+            _audio.loop();
+        }
+
+        play("/wormhole-loop.wav");
+        _wormholeAnimationTimestamp = millis();
+        _wormholeEstablished = true;
     }
 }
 
-void Main::play(std::string filePath) {
-//    _audio.stopSong();
-//    delay(100);
-//    _audio.connecttoFS(FFat, filePath.c_str());
-    xQueueSend(_audioQueue, filePath.c_str(), portMAX_DELAY);
+void Main::play(const std::string& filePath) {
+    if (_audio.isRunning()) {
+        _audio.stopSong();
+    }
+    _audio.connecttoFS(FFat, filePath.c_str());
 }
 
-void Main::audioTask() {
-    _audioQueue = xQueueCreate(10, sizeof(const char*));
+void Main::cancelDial() {
+    _usb.clearPixels();
+    _chevronsPressed.clear();
+    _chevronsQueue.clear();
+    for (std::pair<int, int> &chevron : _chevronLEDs) {
+        chevron.second = LOW;
+    }
+    updateChevrons();
+    _goHomeTimeout = millis();
+    _chevronSelectionInProgress = false;
+}
 
-    _audio.setPinout(GPIO_NUM_16, GPIO_NUM_15, GPIO_NUM_17);
-    _audio.setVolume(15);
-    _audio.forceMono(true);
+int32_t Main::calculateMove(int32_t currentPos, int32_t targetPos) {
+    const int32_t halfRotation = (STEPS_PER_ROTATION * MICROSTEPS) / 2;
+    return ((currentPos - targetPos + (STEPS_PER_ROTATION * MICROSTEPS) + halfRotation) % (STEPS_PER_ROTATION * MICROSTEPS)) - halfRotation;
+}
 
-    const char *filename;
+void Main::updateChevrons() {
+    for (std::pair<int, int> chevron : _chevronLEDs) {
+        digitalWrite(chevron.first, chevron.second);
+    }
+}
 
-    while (true) {
-        if(xQueueReceive(_audioQueue, &filename, 1) == pdPASS) {
-            _audio.connecttoFS(FFat, filename);
-        }
+int Main::getCurrentChevron() {
+    auto it = std::find_if(_chevronLEDs.begin(), _chevronLEDs.end(),
+                           [&](std::pair<int, int> led){ return led.second == LOW; });
 
+    return std::distance(_chevronLEDs.begin(), it);
+}
+
+int32_t Main::getCurrentPosition() {
+    return (_currentPosition * STEPS_PER_SYMBOL * -1) + _chevronOffsets[_currentOffset];
+}
+
+void Main::doChevronAnimation(int chevron) {
+    play("/chev_usual_1.wav");
+
+    unsigned long timestamp = millis();
+    while (millis() - timestamp < 300) {
         _audio.loop();
-
-        if (!_audio.isRunning()) {
-            sleep(1);
-        }
     }
+
+    auto chevronMot = _chevronMots[chevron];
+    _ioExpander.digitalWrite(chevronMot.first, HIGH);
+    _ioExpander.digitalWrite(chevronMot.second, LOW);
+
+
+    timestamp = millis();
+    while (millis() - timestamp < 100) {
+        _audio.loop();
+    }
+
+    _ioExpander.digitalWrite(chevronMot.second, HIGH);
+
+    play("/chev_usual_3.wav");
+    timestamp = millis();
+    while (millis() - timestamp < 200) {
+        _audio.loop();
+    }
+
+    _chevronLEDs[chevron].second = HIGH;
+    updateChevrons();
+
+    timestamp = millis();
+    while (millis() - timestamp < 200) {
+        _audio.loop();
+    }
+
+    play("/chev_usual_2.wav");
+    timestamp = millis();
+    while (millis() - timestamp < 100) {
+        _audio.loop();
+    }
+
+    _ioExpander.digitalWrite(chevronMot.first, LOW);
+
+    timestamp = millis();
+    while (millis() - timestamp < 100) {
+        _audio.loop();
+    }
+
+    _ioExpander.digitalWrite(chevronMot.first, HIGH);
 }
