@@ -9,7 +9,6 @@ const std::set<std::vector<uint8_t>> Main::_validAddresses = {
         {4,  22, 12, 23, 13, 31, 34, 0}, // CLAVA THESSARA INFINITAS
         {7,  38, 14, 35, 6,  20, 34, 0}, // CLAVA THESSARA INFINITAS2
         {21, 35, 12, 18, 10, 25, 34, 0}, // DESTROYERS
-        {11, 7,  36, 19, 23, 28, 34, 0}, // EARTH
         {11, 27, 14, 37, 15, 21, 34, 0}, // EDORA
         {13, 17, 37, 31, 5,  12, 34, 0}, // EURONDA
         {28, 18, 5,  32, 20, 1,  34, 0}, // JUNA
@@ -88,7 +87,7 @@ const std::vector<uint16_t> Main::_chevronOffsets = {
         0,
 };
 
-Main::Main() : _chevronsPressed({}), _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18),
+/*Main::Main() : _chevronsPressed({}), _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18),
                _chevronLEDs({{GPIO_NUM_9,  LOW},
                              {GPIO_NUM_10, LOW},
                              {GPIO_NUM_14, LOW},
@@ -104,6 +103,25 @@ Main::Main() : _chevronsPressed({}), _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18)
                              {P00,  P01},
                              {P11, P12}}) {
 }
+ Kuba
+ */
+
+Main::Main() : _chevronsPressed({}), _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18),
+               _chevronLEDs({{GPIO_NUM_7,  LOW},
+                             {GPIO_NUM_6, LOW},
+                             {GPIO_NUM_5, LOW},
+                             {GPIO_NUM_14,  LOW},
+                             {GPIO_NUM_10,  LOW},
+                             {GPIO_NUM_9,  LOW},
+                             {GPIO_NUM_8,  LOW}}),
+               _chevronMots({{P14, P15},
+                             {P11, P10},
+                             {P13,  P12},
+                             {P03,  P02},
+                             {P07,  P06},
+                             {P01,  P00},
+                             {P05, P04}}) {
+}
 
 void Main::setup() {
     Serial0.begin(115200);
@@ -116,7 +134,6 @@ void Main::setup() {
         _ioExpander.digitalWrite(led.first, HIGH);
         _ioExpander.digitalWrite(led.second, HIGH);
     }
-
 
     FastLED.addLeds<NEOPIXEL, GPIO_NUM_4>(_leds, 144);
     FastLED.clear(true);
@@ -144,8 +161,8 @@ void Main::setup() {
         pinMode(led.first, OUTPUT);
     }
 
-    _usb.registerKeyDownCallback([&](uint8_t id) { onKeyDown(id); });
-    _usb.setup();
+//    _usb.registerKeyDownCallback([&](uint8_t id) { onKeyDown(id); });
+//    _usb.setup();
 }
 
 void Main::loop() {
@@ -197,6 +214,14 @@ void Main::loop() {
             _currentOffset = currentChevron + 2;
         }
     }
+
+    if (Serial0.available()) {
+        int c = Serial0.read();
+
+        if (_keycode2LEDIndex.find(c) != _keycode2LEDIndex.end()) {
+            onKeyDown(_keycode2LEDIndex.at(c));
+        }
+    }
 }
 
 void Main::onKeyDown(uint8_t id) {
@@ -220,8 +245,7 @@ void Main::onKeyDown(uint8_t id) {
     if (std::find(_chevronsPressed.begin(), _chevronsPressed.end(), id) == _chevronsPressed.end()) {
         _chevronsPressed.emplace_back(id);
     } else {
-        cancelDial();
-        play("/cancel.wav");
+        return;
     }
 
     if (_chevronsPressed.size() < 8) {
@@ -231,7 +255,7 @@ void Main::onKeyDown(uint8_t id) {
             return;
         }
 
-        _usb.setPixel(_dhdButtonMapping.at(id), true);
+//        _usb.setPixel(_dhdButtonMapping.at(id), true);
         play("/DHD/dhd_usual_" + std::to_string(random(7) + 1) + ".wav");
 
         if (!_stepper->isRunning()) {
@@ -260,13 +284,13 @@ void Main::onKeyDown(uint8_t id) {
     }
     Serial0.println();
 
-    if (false == _validAddresses.count(pendingAddress)) {
+    if (false == _validAddresses.count(pendingAddress) && false) {
         Serial0.println("Whoops invalid address, better luck next time…");
 
         cancelDial();
         play("/dial_fail_sg1.wav");
     } else {
-        _usb.setPixel(0, true);
+//        _usb.setPixel(0, true);
 
         play("/eh_usual_open.wav");
 
@@ -308,7 +332,7 @@ void Main::play(const std::string& filePath) {
 }
 
 void Main::cancelDial() {
-    _usb.clearPixels();
+//    _usb.clearPixels();
     _chevronsPressed.clear();
     _chevronsQueue.clear();
     for (std::pair<int, int> &chevron : _chevronLEDs) {
@@ -343,6 +367,8 @@ int32_t Main::getCurrentPosition() {
 
 void Main::doChevronAnimation(int chevron) {
     play("/chev_usual_1.wav");
+
+    Serial0.printf("Chevron id: %d, first: %d, second: %d\n", chevron, _chevronMots[chevron].first, _chevronMots[chevron].second);
 
     unsigned long timestamp = millis();
     while (millis() - timestamp < 300) {
