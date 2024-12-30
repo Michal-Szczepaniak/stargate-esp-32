@@ -1,4 +1,5 @@
 #include "Main.h"
+#include "WiFiHelper.h"
 
 const std::set<std::vector<uint8_t>> Main::_validAddresses = {
         {17, 31, 15, 35, 25, 13, 34, 0}, // ABYDOS
@@ -32,6 +33,29 @@ const std::set<std::vector<uint8_t>> Main::_validAddresses = {
         {20, 26, 18, 32, 5,  1,  34, 0}, // TOLLANA
         {21, 18, 2,  25, 33, 13, 34, 0}, // VAGON BREI
         {37, 5,  17, 15, 22, 19, 34, 0}, // FINAL DESTINATION
+};
+
+const std::map<std::string, std::vector<uint8_t>> Main::_savedAddresses = {
+        {"ABYDOS", {17, 31, 15, 35, 25, 13, 34, 0}}, // ABYDOS
+        {"CHULAK", {37, 2,  6,  15, 24, 38, 34, 0}}, // CHULAK
+        {"EDORA", {11, 27, 14, 37, 15, 21, 34, 0}}, // EDORA
+        {"EURONDA", {13, 17, 37, 31, 5,  12, 34, 0}}, // EURONDA
+        {"JUNA", {28, 18, 5,  32, 20, 1,  34, 0}}, // JUNA
+        {"KALLANA", {29, 12, 18, 21, 7,  1,  34, 0}}, // KALLANA
+        {"KHEB", {7,  14, 29, 18, 6,  4,  34, 0}}, // KHEB
+        {"K'TAU", {5,  2,  13, 25, 7,  9,  34, 0}}, // K'TAU
+        {"MARTIN", {30, 25, 35, 31, 23, 26, 34, 0}}, // MARTIN LLOYD'S HOMEWORLD
+        {"NID", {27, 11, 15, 14, 21, 33, 34, 0}}, // NID OFF-WORLD BASE
+        {"P2X-555", {11, 18, 12, 9,  13, 16, 34, 0}}, // P2X-555
+        {"P34-353", {27, 37, 11, 15, 14, 21, 34, 0}}, // P34-353
+        {"P3W-451", {33, 18, 20, 24, 7,  12, 34, 0}}, // P3W-451
+        {"P3X-118", {37, 7,  26, 24, 3,  22, 34, 0}}, // P3X-118
+        {"P3X-562", {21, 11, 37, 14, 30, 15, 34, 0}}, // P3X-562
+        {"P9C-372", {1,  18, 5,  26, 20, 32, 34, 0}}, // P9C-372
+        {"PB5-926", {25, 19, 6,  5,  31, 17, 34, 0}}, // PB5-926
+        {"PX1-767", {38, 2,  14, 18, 7,  15, 34, 0}}, // PX1 - 767
+        {"TOLLAN", {29, 9,  17, 24, 23, 5,  34, 0}}, // TOLLAN
+        {"TOLLANA", {20, 26, 18, 32, 5,  1,  34, 0}}, // TOLLANA
 };
 
 const std::map<int, int> Main::_dhdButtonMapping = {
@@ -74,6 +98,48 @@ const std::map<int, int> Main::_dhdButtonMapping = {
         { 5,  36 },
         { 9,  37 },
         { 20, 38 },
+};
+
+const std::map<int, int> Main::_dhdReverseButtonMapping = {
+        { 0, 0 },
+        { 1, 25 },
+        { 2, 2 },
+        { 3, 17 },
+        { 4, 14 },
+        { 5, 18 },
+        { 6, 23 },
+        { 7, 26 },
+        { 8, 39 },
+        { 9, 33 },
+        { 10, 10 },
+        { 11, 28 },
+        { 12, 16 },
+        { 13, 30 },
+        { 14, 35 },
+        { 15, 15 },
+        { 16, 31 },
+        { 17, 27 },
+        { 18, 8 },
+        { 19, 36 },
+        { 20, 4 },
+        { 21, 3 },
+        { 22, 21 },
+        { 23, 11 },
+        { 24, 37 },
+        { 25, 12 },
+        { 26, 34 },
+        { 27, 38 },
+        { 28, 29 },
+        { 29, 6 },
+        { 30, 24 },
+        { 31, 7 },
+        { 32, 22 },
+        { 33, 19 },
+        { 34, 1 },
+        { 35, 32 },
+        { 36, 5 },
+        { 37, 9 },
+        { 38, 20 },
 };
 
 const std::vector<uint16_t> Main::_chevronOffsets = {
@@ -120,12 +186,34 @@ Main::Main() : _chevronsPressed({}), _ioExpander(0x20, GPIO_NUM_21, GPIO_NUM_18)
                              {P03,  P02},
                              {P07,  P06},
                              {P01,  P00},
-                             {P05, P04}}) {
+                             {P05, P04}}), _server(80), _ws("/ws") {
 }
 
 void Main::setup() {
     Serial0.begin(115200);
     Serial0.println("start");
+
+    WiFiHelper::connect();
+
+    _ws.onEvent([&](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
+                    void *arg, uint8_t *data, size_t len){
+        switch (type) {
+            case WS_EVT_CONNECT:
+                Serial0.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+                break;
+            case WS_EVT_DISCONNECT:
+                Serial0.printf("WebSocket client #%u disconnected\n", client->id());
+                break;
+            case WS_EVT_DATA:
+                handleWebSocketMessage(arg, data, len);
+                break;
+            case WS_EVT_PONG:
+            case WS_EVT_ERROR:
+                break;
+        }
+    });
+    _server.addHandler(&_ws);
+    _server.begin();
 
     _ioExpander.begin();
     for (std::pair<int, int> led: _chevronMots) {
@@ -147,7 +235,7 @@ void Main::setup() {
     Serial0.println("File system mounted");
 
     _audio.setPinout(GPIO_NUM_16, GPIO_NUM_15, GPIO_NUM_17);
-    _audio.setVolume(15);
+    _audio.setVolume(10);
     _audio.forceMono(true);
 
     _stepperEngine.init();
@@ -166,8 +254,9 @@ void Main::setup() {
 }
 
 void Main::loop() {
-    _usb.loop();
+//    _usb.loop();
     _audio.loop();
+    _ws.cleanupClients();
 
     if (_goHomeTimeout != 0 && (millis() - _goHomeTimeout > (1 * 1000))) {
         _goHomeTimeout = 0;
@@ -197,21 +286,40 @@ void Main::loop() {
 
     if (!_stepper->isRunning() && _chevronSelectionInProgress) {
         int currentChevron = getCurrentChevron();
-        doChevronAnimation(currentChevron);
 
-        _chevronSelectionInProgress = false;
+        if (currentChevron >= 6) {
+            doChevronAnimation(currentChevron);
 
-        if (!_chevronsQueue.empty()) {
-            uint8_t nextChevron = _chevronsQueue.front();
-            _chevronsQueue.erase(_chevronsQueue.begin());
-            _stepper->move(
-                    calculateMove(
-                            getCurrentPosition(),
-                            ((nextChevron-1) * -1 * STEPS_PER_SYMBOL) + _chevronOffsets[currentChevron + 2]
-                            ));
-            _currentPosition = nextChevron-1;
-            _chevronSelectionInProgress = true;
-            _currentOffset = currentChevron + 2;
+            unsigned long timestamp = millis();
+            while (millis() - timestamp < 1000) {
+                _audio.loop();
+            }
+
+            _chevronsQueue.clear();
+
+            _chevronSelectionInProgress = false;
+
+            openGate();
+        } else {
+            doChevronAnimation(currentChevron);
+
+            _chevronSelectionInProgress = false;
+
+            if (!_chevronsQueue.empty()) {
+                uint8_t nextChevron = _chevronsQueue.front();
+                _currentChevron = nextChevron;
+                _chevronsQueue.erase(_chevronsQueue.begin());
+                int32_t move = calculateMove(
+                        getCurrentPosition(),
+                        ((nextChevron - 1) * -1 * STEPS_PER_SYMBOL) + _chevronOffsets[currentChevron + 2]
+                );
+                _stepper->move(move);
+                _currentPosition = nextChevron - 1;
+                _chevronSelectionInProgress = true;
+                _currentOffset = currentChevron + 2;
+
+                _ws.textAll((std::string("1") + (move >= 0 ? "1" : "0")).c_str());
+            }
         }
     }
 
@@ -274,7 +382,6 @@ void Main::onKeyDown(uint8_t id) {
         return;
     }
 
-
     std::vector<uint8_t> pendingAddress;
     Serial0.print("Chevrons: ");
     for (uint8_t chevron : _chevronsPressed) {
@@ -290,37 +397,7 @@ void Main::onKeyDown(uint8_t id) {
         cancelDial();
         play("/dial_fail_sg1.wav");
     } else {
-//        _usb.setPixel(0, true);
-
-        play("/eh_usual_open.wav");
-
-        unsigned long timestamp = millis();
-        while (millis() - timestamp < 1500) {
-            _audio.loop();
-        }
-
-        for (auto &_led: _leds) {
-            _led = CRGB(0, 10, 255);
-        }
-        FastLED.setBrightness(50);
-        FastLED.show();
-
-        timestamp = millis();
-        while (millis() - timestamp < 2000) {
-            _audio.loop();
-        }
-
-        FastLED.setBrightness(20);
-        FastLED.show();
-
-        timestamp = millis();
-        while (millis() - timestamp < 2500) {
-            _audio.loop();
-        }
-
-        play("/wormhole-loop.wav");
-        _wormholeAnimationTimestamp = millis();
-        _wormholeEstablished = true;
+        openGate();
     }
 }
 
@@ -370,6 +447,8 @@ void Main::doChevronAnimation(int chevron) {
 
     Serial0.printf("Chevron id: %d, first: %d, second: %d\n", chevron, _chevronMots[chevron].first, _chevronMots[chevron].second);
 
+    _ws.textAll(("2" + std::to_string(chevron) + _indexToChar.at(_currentChevron)).c_str());
+
     unsigned long timestamp = millis();
     while (millis() - timestamp < 300) {
         _audio.loop();
@@ -415,4 +494,99 @@ void Main::doChevronAnimation(int chevron) {
     }
 
     _ioExpander.digitalWrite(chevronMot.first, HIGH);
+}
+
+void Main::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
+    auto *info = (AwsFrameInfo*)arg;
+    if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+        data[len] = 0;
+
+        if (data[0] == '0') {
+            Serial0.printf("Dial: %s\n", data);
+            std::string address((char*)data, len);
+            address = address.substr(1);
+
+            if (_savedAddresses.find(address) == _savedAddresses.end()) {
+                Serial0.println("Couldn't find address");
+                _ws.textAll("0");
+            } else {
+                Serial0.println("Begin dialing");
+
+                for (int chevron : _savedAddresses.at(address)) {
+                    _chevronsQueue.emplace_back(_dhdReverseButtonMapping.at(chevron));
+                }
+
+                int id = _chevronsQueue.front();
+                _currentChevron = id;
+                _chevronsQueue.erase(_chevronsQueue.begin());
+                int currentChevron = 0;
+                int32_t move = calculateMove(
+                        getCurrentPosition(),
+                        ((id-1) * -1 * STEPS_PER_SYMBOL) + _chevronOffsets[currentChevron+1]
+                );
+                _stepper->move(move);
+                _currentPosition = id-1;
+                _chevronSelectionInProgress = true;
+                _currentOffset = currentChevron+1;
+
+                _ws.textAll((std::string("1") + (move >= 0 ? "1" : "0")).c_str());
+            }
+        } else if (data[0] == '1') {
+            Serial0.println("shutdown");
+
+            if (!_wormholeEstablished) {
+                cancelDial();
+                play("/cancel.wav");
+                return;
+            }
+
+            _wormholeEstablished = false;
+            play("/eh_usual_close.wav");
+
+            unsigned long timestamp = millis();
+            while (millis() - timestamp < 3000) {
+                _audio.loop();
+            }
+
+            cancelDial();
+            FastLED.clear(true);
+            _wormholeAnimationTimestamp = 0;
+            return;
+        }
+    }
+}
+
+void Main::openGate() {
+    //        _usb.setPixel(0, true);
+
+    _ws.textAll("3");
+    play("/eh_usual_open.wav");
+
+    unsigned long timestamp = millis();
+    while (millis() - timestamp < 1500) {
+        _audio.loop();
+    }
+
+    for (auto &_led: _leds) {
+        _led = CRGB(0, 10, 255);
+    }
+    FastLED.setBrightness(50);
+    FastLED.show();
+
+    timestamp = millis();
+    while (millis() - timestamp < 2000) {
+        _audio.loop();
+    }
+
+    FastLED.setBrightness(20);
+    FastLED.show();
+
+    timestamp = millis();
+    while (millis() - timestamp < 2500) {
+        _audio.loop();
+    }
+
+    play("/wormhole-loop.wav");
+    _wormholeAnimationTimestamp = millis();
+    _wormholeEstablished = true;
 }
